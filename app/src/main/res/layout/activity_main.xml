@@ -25,22 +25,25 @@
         android:layout_width="0dp"
         android:layout_height="100dp"
         android:layout_marginStart="50dp"
+        android:layout_marginEnd="50dp"
         android:layout_marginBottom="50dp"
         android:scaleType="fitCenter"
-        android:text="Take Photo"
+        android:text="@string/take_photo"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toLeftOf="@id/guideline"
         app:layout_constraintBottom_toBottomOf="parent" />
 
     <Button
-        android:id="@+id/camera_capture_raw_button"
-        android:layout_width="100dp"
+        android:id="@+id/camera_read_image_button"
+        android:layout_width="0dp"
         android:layout_height="100dp"
         android:layout_marginStart="50dp"
+        android:layout_marginEnd="50dp"
         android:layout_marginBottom="50dp"
         android:scaleType="fitCenter"
-        android:text="Take RAW"
+        android:text="@string/read_photo"
         app:layout_constraintStart_toStartOf="@+id/guideline"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
 
     <androidx.camera.view.PreviewView
@@ -56,11 +59,12 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:background="@color/white"
-        android:text="CameraX"
+        android:text="@string/init_title"
         android:textSize="24sp"
         android:gravity="center"
         app:layout_constraintLeft_toLeftOf="parent"
         android:layout_marginStart="50dp"
+        android:layout_marginEnd="50dp"
         app:layout_constraintRight_toLeftOf="@id/guideline"
         app:layout_constraintBottom_toTopOf="@id/h_guideline"
         app:layout_constraintTop_toTopOf="@+id/viewFinder" />

@@ -35,6 +35,7 @@ import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfDouble;
 import org.opencv.core.Point;
@@ -64,7 +65,7 @@ public class MainActivity extends AppCompatActivity
     private Mat matOrigin = null;
     private TextView camera_blur = null;
 
-    private ExecutorService edgeCalcService;
+    //private ExecutorService edgeCalcService;
 
     private final BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -93,19 +94,29 @@ public class MainActivity extends AppCompatActivity
         Button camera_capture_button = findViewById(R.id.camera_capture_button);
         camera_capture_button.setOnClickListener(view -> takePhoto());
 
-        Button camera_capture_raw_button = findViewById(R.id.camera_capture_raw_button);
-        camera_capture_raw_button.setOnClickListener(view -> takeRawPicture());
-        camera_capture_raw_button.setEnabled(false);
+        Button camera_capture_raw_button = findViewById(R.id.camera_read_image_button);
+        camera_capture_raw_button.setOnClickListener(view -> ReadPhotos());
 
         camera_blur = findViewById(R.id.camera_blur);
 
         outputDirectory = getOutputDirectory();
         cameraExecutor = Executors.newSingleThreadExecutor();
-        edgeCalcService = Executors.newFixedThreadPool(1);
+        //edgeCalcService = Executors.newFixedThreadPool(1);
     }
 
-    private void takeRawPicture() {
-
+    private void ReadPhotos() {
+        String photoDir = outputDirectory.getAbsolutePath() + "/photos";
+        File photoDirectory = new File(photoDir);
+        File[] photoFiles = photoDirectory.listFiles();
+        if(photoFiles != null && photoFiles.length > 0) {
+            for (File photoFile : photoFiles)
+            {
+                if(photoFile.exists()) {
+                    Log.d(TAG, "photoFile:" + photoFile.getName());
+                    isBlurredFile(photoFile);
+                }
+            }
+        }
     }
 
     @Override
@@ -272,22 +283,28 @@ public class MainActivity extends AppCompatActivity
 
     private synchronized void isBlurredImage(Mat imageMat) {
         Mat matGrey = new Mat();
-        Imgproc.cvtColor(imageMat, matGrey, Imgproc.COLOR_BGR2GRAY);
+        // Reduce noise by blurring with a Gaussian filter ( kernel size = 3 )
+        Imgproc.GaussianBlur(imageMat, matGrey,
+                new Size(3, 3), 0, 0, Core.BORDER_DEFAULT);
+        //Grayscale
+        Imgproc.cvtColor(matGrey, matGrey, Imgproc.COLOR_BGR2GRAY);
 
         Mat matLaplacian = new Mat();
-        //Imgproc.Laplacian(matGrey, matLaplacian,  imageMat.depth());
-        Imgproc.Laplacian(matGrey, matLaplacian,  imageMat.depth(), 5, 1.0, 0.0);
+        Imgproc.Laplacian(matGrey, matLaplacian, CvType.CV_16S, 3, 1.0, 0.0, Core.BORDER_DEFAULT);
 
+        //converting back to CV_8U, 0~255
+        Mat matDst = new Mat();
+        Core.convertScaleAbs(matLaplacian, matDst);
+        //Calculate mean, std, cv
         MatOfDouble median = new MatOfDouble();
-        MatOfDouble std= new MatOfDouble();
-        Core.meanStdDev(matLaplacian, median , std);
-        Double countBlur = Math.pow(std.get(0,0)[0],2);
-        Log.d(TAG, "Blur Index = " + countBlur);
-
-        edgeCalcService.submit(() -> EdgeCalculation.transEdgeImage(imageMat));
+        MatOfDouble std = new MatOfDouble();
+        Core.meanStdDev(matDst, median , std);
+        Double CV = ((std.get(0,0)[0]) / (median.get(0,0)[0]) * 100.0);
+        Log.d(TAG, "median: " + median.get(0,0)[0] + ", std: " + std.get(0,0)[0]
+                + "\r\nCoefficient of Variation:" + CV);
 
         //Write Blur index on image
-        String strBlur = String.format(Locale.US, "Blur Index = %4.1f",  countBlur);
+        String strBlur = String.format(Locale.US, "Blur Index = %3.2f %%",  CV);
         camera_blur.setText(strBlur);
 
         Point position = new Point(10, imageMat.height()-100);
@@ -295,16 +312,69 @@ public class MainActivity extends AppCompatActivity
         int scale = 5;
         Scalar color = new Scalar(255, 0, 0, 0);
         int thickness = 5;
-        Imgproc.putText(imageMat, strBlur, position, font, scale, color, thickness);
+        //Imgproc.putText(imageMat, strBlur, position, font, scale, color, thickness);
+        Imgproc.putText(matLaplacian, strBlur, position, font, scale, color, thickness);
 
         File photoFileBlur = new File(outputDirectory,
                 new SimpleDateFormat(Configuration.FILENAME_FORMAT, Locale.US)
                         .format(photoTime) + "_Blur.jpg");
-        Imgcodecs.imwrite(photoFileBlur.getAbsolutePath(), imageMat);
+        Imgcodecs.imwrite(photoFileBlur.getAbsolutePath(), matLaplacian);
         //-------------------------------------------------------------
 
         matLaplacian.release();
         matGrey.release();
+        matDst.release();
         imageMat.release();
+
+        //edgeCalcService.submit(() -> EdgeCalculation.transEdgeImage(imageMat));
+    }
+
+    private synchronized void isBlurredFile(File blurDetectFile) {
+        Mat matPhoto = Imgcodecs.imread(blurDetectFile.getAbsolutePath(),
+                Imgcodecs.IMREAD_COLOR);
+
+        Mat matGrey = new Mat();
+        // Reduce noise by blurring with a Gaussian filter ( kernel size = 3 )
+        Imgproc.GaussianBlur(matPhoto, matGrey,
+                new Size(3, 3), 0, 0, Core.BORDER_DEFAULT );
+        Imgproc.cvtColor(matGrey, matGrey, Imgproc.COLOR_BGR2GRAY);
+
+        Mat matLaplacian = new Mat();
+        Imgproc.Laplacian(matGrey, matLaplacian, CvType.CV_16S, 3, 1.0, 0.0, Core.BORDER_DEFAULT);
+
+        //converting back to CV_8U, 0~255
+        Mat matDst = new Mat();
+        Core.convertScaleAbs(matLaplacian, matDst);
+        //Calculate mean, std, cv
+        MatOfDouble median = new MatOfDouble();
+        MatOfDouble std = new MatOfDouble();
+        Core.meanStdDev(matDst, median , std);
+        Double CV = ((std.get(0,0)[0]) / (median.get(0,0)[0]) * 100.0);
+        Log.d(TAG, "median: " + median.get(0,0)[0] + ", std: " + std.get(0,0)[0]
+                + "\r\nCoefficient of Variation:" + CV);
+
+        //Write Blur index on image
+        String strBlur = String.format(Locale.US, "Blur Index = %3.2f %%",  CV);
+        camera_blur.setText(strBlur);
+
+        Point position = new Point(10, matPhoto.height()-100);
+        int font = Imgproc.FONT_HERSHEY_SIMPLEX;
+        int scale = 2;
+        Scalar color = new Scalar(255, 0, 0, 0);
+        int thickness = 2;
+        Imgproc.putText(matLaplacian, strBlur, position, font, scale, color, thickness);
+
+
+        File photoFileBlur = new File(outputDirectory.getAbsolutePath() + "/photos",
+                blurDetectFile.getName().substring(0, blurDetectFile.getName().lastIndexOf(".")) + "_Blur.jpg");
+        Imgcodecs.imwrite(photoFileBlur.getAbsolutePath(), matLaplacian);
+        //-------------------------------------------------------------
+
+        matLaplacian.release();
+        matGrey.release();
+        matDst.release();
+        matPhoto.release();
+
+        //edgeCalcService.submit(() -> EdgeCalculation.transEdgeImage(matPhoto));
     }
 }

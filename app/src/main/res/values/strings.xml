@@ -3,4 +3,7 @@
     <string name="take_photo">Take Photo</string>
     <string name="read_photo">Read Photos</string>
     <string name="init_title">CameraX</string>
+    <string name="switch_title">Split</string>
+    <string name="switch_off">OFF</string>
+    <string name="switch_on">ON</string>
 </resources>

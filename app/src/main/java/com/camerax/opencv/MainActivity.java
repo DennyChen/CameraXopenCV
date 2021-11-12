@@ -2,8 +2,10 @@ package com.camerax.opencv;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.widget.Button;
@@ -28,21 +30,16 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
-import org.opencv.core.Core;
-import org.opencv.core.CvType;
 import org.opencv.core.Mat;
-import org.opencv.core.MatOfDouble;
-import org.opencv.core.Point;
-import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
-import org.opencv.imgproc.Imgproc;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -52,7 +49,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity
         implements CameraBridgeViewBase.CvCameraViewListener2 {
-    private final String TAG = "CameraXBasic";
+    private final String TAG = "CameraXOpenCV";
 
     private ImageCapture imageCapture = null;
     public static File outputDirectory;
@@ -62,10 +59,13 @@ public class MainActivity extends AppCompatActivity
     public static long photoTime = 0;
 
     private Preview mPreview = null;
-    private Mat matOrigin = null;
     private TextView camera_blur = null;
 
-    //private ExecutorService edgeCalcService;
+    public static final int MESSAGE_UPDATE_UI = 1;
+    private ExecutorService edgeCalcService;
+    private EdgeCalculation edgeCalculation;
+
+    private boolean divideImage = false;
 
     private final BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -99,24 +99,13 @@ public class MainActivity extends AppCompatActivity
 
         camera_blur = findViewById(R.id.camera_blur);
 
+        SwitchMaterial split_switch = findViewById(R.id.split_switch);
+        split_switch.setOnCheckedChangeListener((compoundButton, isChecked) -> divideImage = isChecked);
+
         outputDirectory = getOutputDirectory();
         cameraExecutor = Executors.newSingleThreadExecutor();
-        //edgeCalcService = Executors.newFixedThreadPool(1);
-    }
-
-    private void ReadPhotos() {
-        String photoDir = outputDirectory.getAbsolutePath() + "/photos";
-        File photoDirectory = new File(photoDir);
-        File[] photoFiles = photoDirectory.listFiles();
-        if(photoFiles != null && photoFiles.length > 0) {
-            for (File photoFile : photoFiles)
-            {
-                if(photoFile.exists()) {
-                    Log.d(TAG, "photoFile:" + photoFile.getName());
-                    isBlurredFile(photoFile);
-                }
-            }
-        }
+        edgeCalcService = Executors.newFixedThreadPool(1);
+        edgeCalculation = new EdgeCalculation(UpdateUIHandler);
     }
 
     @Override
@@ -215,7 +204,6 @@ public class MainActivity extends AppCompatActivity
                         imageCapture, imageAnalysis);
                 cameraBackControl = cameraBack.getCameraControl();
 
-                viewFinder.getOverlay().add(camera_blur);
                 viewFinder.setOnTouchListener((view, motionEvent) -> {
                     switch (motionEvent.getAction()) {
                         case MotionEvent.ACTION_DOWN:
@@ -257,14 +245,12 @@ public class MainActivity extends AppCompatActivity
                         @Override
                         public void onImageSaved(@NonNull ImageCapture.OutputFileResults
                                                          outputFileResults) {
-                            Uri savedUri = Uri.fromFile(photoFile);
-                            String msg = "Photo capture succeeded: " + savedUri;
+                            //Uri savedUri = Uri.fromFile(photoFile);
+                            String msg = "Photo capture succeeded: " + photoFile.getAbsolutePath();
                             Toast.makeText(getBaseContext(), msg, Toast.LENGTH_SHORT).show();
                             Log.d(TAG, msg);
 
-                            matOrigin = Imgcodecs.imread(savedUri.getEncodedPath(),
-                                    Imgcodecs.IMREAD_UNCHANGED);
-                            isBlurredImage(matOrigin);
+                            isBlurredImage(photoFile);
                         }
 
                         @Override
@@ -275,106 +261,44 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    private void ReadPhotos() {
+        String photoDir = outputDirectory.getAbsolutePath() + "/photos";
+        File photoDirectory = new File(photoDir);
+        File[] photoFiles = photoDirectory.listFiles();
+        if(photoFiles != null && photoFiles.length > 0) {
+            for (File photoFile : photoFiles)
+            {
+                if(photoFile.exists()) {
+                    Log.d(TAG, "photoFile:" + photoFile.getName());
+                    //isBlurredFile(photoFile);
+                    isBlurredImage(photoFile);
+                }
+            }
+        }
+    }
+
     private static class ImageAnalyzer implements ImageAnalysis.Analyzer {
         @Override
         public void analyze(@NonNull ImageProxy image) {
         }
     }
 
-    private synchronized void isBlurredImage(Mat imageMat) {
-        Mat matGrey = new Mat();
-        // Reduce noise by blurring with a Gaussian filter ( kernel size = 3 )
-        Imgproc.GaussianBlur(imageMat, matGrey,
-                new Size(3, 3), 0, 0, Core.BORDER_DEFAULT);
-        //Grayscale
-        Imgproc.cvtColor(matGrey, matGrey, Imgproc.COLOR_BGR2GRAY);
-
-        Mat matLaplacian = new Mat();
-        Imgproc.Laplacian(matGrey, matLaplacian, CvType.CV_16S, 3, 1.0, 0.0, Core.BORDER_DEFAULT);
-
-        //converting back to CV_8U, 0~255
-        Mat matDst = new Mat();
-        Core.convertScaleAbs(matLaplacian, matDst);
-        //Calculate mean, std, cv
-        MatOfDouble median = new MatOfDouble();
-        MatOfDouble std = new MatOfDouble();
-        Core.meanStdDev(matDst, median , std);
-        Double CV = ((std.get(0,0)[0]) / (median.get(0,0)[0]) * 100.0);
-        Log.d(TAG, "median: " + median.get(0,0)[0] + ", std: " + std.get(0,0)[0]
-                + "\r\nCoefficient of Variation:" + CV);
-
-        //Write Blur index on image
-        String strBlur = String.format(Locale.US, "Blur Index = %3.2f %%",  CV);
-        camera_blur.setText(strBlur);
-
-        Point position = new Point(10, imageMat.height()-100);
-        int font = Imgproc.FONT_HERSHEY_SIMPLEX;
-        int scale = 5;
-        Scalar color = new Scalar(255, 0, 0, 0);
-        int thickness = 5;
-        //Imgproc.putText(imageMat, strBlur, position, font, scale, color, thickness);
-        Imgproc.putText(matLaplacian, strBlur, position, font, scale, color, thickness);
-
-        File photoFileBlur = new File(outputDirectory,
-                new SimpleDateFormat(Configuration.FILENAME_FORMAT, Locale.US)
-                        .format(photoTime) + "_Blur.jpg");
-        Imgcodecs.imwrite(photoFileBlur.getAbsolutePath(), matLaplacian);
-        //-------------------------------------------------------------
-
-        matLaplacian.release();
-        matGrey.release();
-        matDst.release();
-        imageMat.release();
-
-        //edgeCalcService.submit(() -> EdgeCalculation.transEdgeImage(imageMat));
-    }
-
-    private synchronized void isBlurredFile(File blurDetectFile) {
+    private synchronized void isBlurredImage(File blurDetectFile) {
         Mat matPhoto = Imgcodecs.imread(blurDetectFile.getAbsolutePath(),
                 Imgcodecs.IMREAD_COLOR);
 
-        Mat matGrey = new Mat();
-        // Reduce noise by blurring with a Gaussian filter ( kernel size = 3 )
-        Imgproc.GaussianBlur(matPhoto, matGrey,
-                new Size(3, 3), 0, 0, Core.BORDER_DEFAULT );
-        Imgproc.cvtColor(matGrey, matGrey, Imgproc.COLOR_BGR2GRAY);
-
-        Mat matLaplacian = new Mat();
-        Imgproc.Laplacian(matGrey, matLaplacian, CvType.CV_16S, 3, 1.0, 0.0, Core.BORDER_DEFAULT);
-
-        //converting back to CV_8U, 0~255
-        Mat matDst = new Mat();
-        Core.convertScaleAbs(matLaplacian, matDst);
-        //Calculate mean, std, cv
-        MatOfDouble median = new MatOfDouble();
-        MatOfDouble std = new MatOfDouble();
-        Core.meanStdDev(matDst, median , std);
-        Double CV = ((std.get(0,0)[0]) / (median.get(0,0)[0]) * 100.0);
-        Log.d(TAG, "median: " + median.get(0,0)[0] + ", std: " + std.get(0,0)[0]
-                + "\r\nCoefficient of Variation:" + CV);
-
-        //Write Blur index on image
-        String strBlur = String.format(Locale.US, "Blur Index = %3.2f %%",  CV);
-        camera_blur.setText(strBlur);
-
-        Point position = new Point(10, matPhoto.height()-100);
-        int font = Imgproc.FONT_HERSHEY_SIMPLEX;
-        int scale = 2;
-        Scalar color = new Scalar(255, 0, 0, 0);
-        int thickness = 2;
-        Imgproc.putText(matLaplacian, strBlur, position, font, scale, color, thickness);
-
-
-        File photoFileBlur = new File(outputDirectory.getAbsolutePath() + "/photos",
-                blurDetectFile.getName().substring(0, blurDetectFile.getName().lastIndexOf(".")) + "_Blur.jpg");
-        Imgcodecs.imwrite(photoFileBlur.getAbsolutePath(), matLaplacian);
-        //-------------------------------------------------------------
-
-        matLaplacian.release();
-        matGrey.release();
-        matDst.release();
-        matPhoto.release();
-
-        //edgeCalcService.submit(() -> EdgeCalculation.transEdgeImage(matPhoto));
+        edgeCalcService.submit(() -> EdgeCalculation.calculateCoffVar(
+                blurDetectFile,
+                matPhoto, divideImage));
     }
+
+    private final Handler UpdateUIHandler = new Handler(Looper.getMainLooper()){
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            if (msg.what == MESSAGE_UPDATE_UI) {
+                String strBlur = (String) msg.obj;
+                camera_blur.setText(strBlur);
+            }
+        }
+    };
 }

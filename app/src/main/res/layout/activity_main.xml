@@ -20,6 +20,13 @@
         android:orientation="horizontal"
         app:layout_constraintGuide_percent="0.1" />
 
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/v_guideline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.8" />
+
     <Button
         android:id="@+id/camera_capture_button"
         android:layout_width="0dp"
@@ -68,5 +75,25 @@
         app:layout_constraintRight_toLeftOf="@id/guideline"
         app:layout_constraintBottom_toTopOf="@id/h_guideline"
         app:layout_constraintTop_toTopOf="@+id/viewFinder" />
+
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/split_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/switch_title"
+        android:textColor="@color/purple_500"
+        android:textSize="24sp"
+        android:checked="false"
+        android:enabled="true"
+        android:textOff="@string/switch_off"
+        android:textOn="@string/switch_on"
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        app:showText="true"
+        app:switchMinWidth="70dp"
+        app:layout_constraintStart_toStartOf="@+id/v_guideline"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/viewFinder"
+        app:layout_constraintBottom_toTopOf="@id/h_guideline"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

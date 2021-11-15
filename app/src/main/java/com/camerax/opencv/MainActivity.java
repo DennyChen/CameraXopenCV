@@ -1,6 +1,7 @@
 package com.camerax.opencv;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -47,6 +48,10 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * author: Denny.CM
+ * date:   2021/10/14
+ */
 public class MainActivity extends AppCompatActivity
         implements CameraBridgeViewBase.CvCameraViewListener2 {
     private final String TAG = "CameraXOpenCV";
@@ -83,6 +88,8 @@ public class MainActivity extends AppCompatActivity
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        Context mContext = this.getApplicationContext();
+
         // Request camera permissions
         if (allPermissionsGranted()) {
             startCamera();
@@ -105,7 +112,7 @@ public class MainActivity extends AppCompatActivity
         outputDirectory = getOutputDirectory();
         cameraExecutor = Executors.newSingleThreadExecutor();
         edgeCalcService = Executors.newFixedThreadPool(1);
-        edgeCalculation = new EdgeCalculation(UpdateUIHandler);
+        edgeCalculation = new EdgeCalculation(mContext, UpdateUIHandler);
     }
 
     @Override
@@ -115,7 +122,7 @@ public class MainActivity extends AppCompatActivity
             Log.d(TAG, "Internal OpenCV library not found. Using OpenCV Manager for initialization");
             OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION, this, mLoaderCallback);
         } else {
-            Log.d(TAG, "OpenCV library found inside package. Using it!");
+            Log.i(TAG, "OpenCV library found inside package. Using it!");
             mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
         }
     }
@@ -128,7 +135,7 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onCameraViewStarted(int width, int height) {
-        Log.d(TAG, "onCameraViewStarted W/H: " + width + "/" + height);
+        Log.i(TAG, "onCameraViewStarted W/H: " + width + "/" + height);
     }
 
     @Override
@@ -141,7 +148,7 @@ public class MainActivity extends AppCompatActivity
         //===============
         Mat rgba = cvCameraViewFrame.rgba();
         Size sizeRgba = rgba.size();
-        Log.d(TAG, "sizeRgba W/H: " + sizeRgba.width + "/" + sizeRgba.height);
+        Log.i(TAG, "sizeRgba W/H: " + sizeRgba.width + "/" + sizeRgba.height);
         return null;
     }
 
@@ -248,9 +255,8 @@ public class MainActivity extends AppCompatActivity
                             //Uri savedUri = Uri.fromFile(photoFile);
                             String msg = "Photo capture succeeded: " + photoFile.getAbsolutePath();
                             Toast.makeText(getBaseContext(), msg, Toast.LENGTH_SHORT).show();
-                            Log.d(TAG, msg);
-
-                            isBlurredImage(photoFile);
+                            Log.i(TAG, msg);
+                            isBlurredImage(photoFile, true);
                         }
 
                         @Override
@@ -269,9 +275,8 @@ public class MainActivity extends AppCompatActivity
             for (File photoFile : photoFiles)
             {
                 if(photoFile.exists()) {
-                    Log.d(TAG, "photoFile:" + photoFile.getName());
-                    //isBlurredFile(photoFile);
-                    isBlurredImage(photoFile);
+                    Log.i(TAG, "photoFile:" + photoFile.getName());
+                    isBlurredImage(photoFile, false);
                 }
             }
         }
@@ -283,13 +288,13 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    private synchronized void isBlurredImage(File blurDetectFile) {
+    private synchronized void isBlurredImage(File blurDetectFile, boolean isCapturedImage) {
         Mat matPhoto = Imgcodecs.imread(blurDetectFile.getAbsolutePath(),
                 Imgcodecs.IMREAD_COLOR);
 
-        edgeCalcService.submit(() -> EdgeCalculation.calculateCoffVar(
+        edgeCalcService.submit(() -> edgeCalculation.calculateCoffVar(
                 blurDetectFile,
-                matPhoto, divideImage));
+                matPhoto, isCapturedImage, divideImage));
     }
 
     private final Handler UpdateUIHandler = new Handler(Looper.getMainLooper()){

@@ -1,6 +1,9 @@
 package com.camerax.opencv;
 
+import android.content.Context;
+import android.content.res.Configuration;
 import android.os.Handler;
+import android.util.Log;
 
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
@@ -20,13 +23,14 @@ import java.util.Locale;
  * author: Denny.CM
  * date:   2021/10/21
  */
-class EdgeCalculation {
+public class EdgeCalculation {
+    private static Context mainContext;
     private static Handler mHandler;
+    private static int ROI_ROWS;
+    private static int ROI_COLS;
 
-    private static final int ROI_ROWS = 3;
-    private static final int ROI_COLS = 3;
-
-    EdgeCalculation(Handler handler){
+    EdgeCalculation(Context mContext, Handler handler){
+        mainContext = mContext.getApplicationContext();
         mHandler = handler;
     }
 
@@ -34,17 +38,37 @@ class EdgeCalculation {
     If matSourcePath is NULL, it will not save the image of Laplacian.
     If divideToROI is true, it will split the image to 3X3 ROI and calculate CV of each ROI.
      */
-    public static void calculateCoffVar(File matSourcePath, Mat matToCalculate, boolean divideToROI) {
+    public void calculateCoffVar(File matSourcePath, Mat matToCalculate,
+                                 boolean isCapturedImage, boolean divideToROI) {
+        int orientation;
+        if(isCapturedImage) {
+            orientation = mainContext.getResources().getConfiguration().orientation;
+        } else {
+            orientation = (matToCalculate.width() > matToCalculate.height()) ?
+                    Configuration.ORIENTATION_LANDSCAPE : Configuration.ORIENTATION_PORTRAIT;
+        }
+
+        if(orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            ROI_ROWS = 3;
+            ROI_COLS = 3;
+        } else if (orientation == Configuration.ORIENTATION_PORTRAIT) {
+            ROI_ROWS = 3;
+            ROI_COLS = 3;
+        }
+        int ROI_W = matToCalculate.width() / ROI_COLS;
+        int ROI_H = matToCalculate.height() / ROI_ROWS;
+        Log.i("CameraXOpenCV", "orientation: " + orientation + ", ROI W/H:" + ROI_W + "/" + ROI_H);
+
         //Split image to 3X3 ROI
         if(divideToROI) {
             Mat matDst = new Mat();
             Core.convertScaleAbs(calLaplacian(matToCalculate), matDst);
 
-            for (int i = 0; i < ROI_ROWS; i++) {
-                for (int j = 0; j < ROI_COLS; j++) {
+            for (int i = 0; i < ROI_COLS; i++) {
+                for (int j = 0; j <ROI_ROWS ; j++) {
                     //Split to Region Of Interests
-                    Point pointROI = new Point((i * 1088), (j * 816));
-                    Rect rectROI = new Rect(pointROI, new Size(1088, 816));
+                    Point pointROI = new Point((i * ROI_W), (j * ROI_H));
+                    Rect rectROI = new Rect(pointROI, new Size(ROI_W, ROI_H));
                     Mat matROI = new Mat(matToCalculate, rectROI);
 
                     //Calculate CV of ROI
